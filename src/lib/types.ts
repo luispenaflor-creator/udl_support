@@ -1,0 +1,1 @@
+export type Role='solicitante'|'agente'|'directivo'|'administrador';export const CAMPUS=['Centro','Roma','San Ángel','Coapa','Insurgentes','Reforma','Satélite','Zaragoza'] as const;

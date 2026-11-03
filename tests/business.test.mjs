@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const root=resolve(import.meta.dirname,'..');
+test('la base define los ocho planteles institucionales',async()=>{const sql=await readFile(resolve(root,'supabase/migrations/202610310001_initial.sql'),'utf8');for(const campus of ['Centro','Roma','San Ángel','Coapa','Insurgentes','Reforma','Satélite','Zaragoza'])assert.ok(sql.includes("'"+campus+"'"),campus)});
+test('el correo inicial institucional está definido',async()=>{const sql=await readFile(resolve(root,'supabase/migrations/202610310001_initial.sql'),'utf8');assert.match(sql,/mesadeayuda@udlondres\.com/)});
+test('las tablas de tickets aplican RLS',async()=>{const sql=await readFile(resolve(root,'supabase/migrations/202610310001_initial.sql'),'utf8');assert.match(sql,/alter table public\.tickets enable row level security/i)});
+test('el login permite completar los enlaces de recuperación de contraseña',async()=>{const page=await readFile(resolve(root,'src/app/login/page.tsx'),'utf8');assert.match(page,/PASSWORD_RECOVERY/);assert.match(page,/auth\.updateUser\(\{ password \}\)/);assert.match(page,/type.*recovery/)});
+test('el inicio de sesión guarda la sesión de Supabase desde el servidor',async()=>{const route=await readFile(resolve(root,'src/app/auth/signin/route.ts'),'utf8');assert.match(route,/signInWithPassword/);assert.match(route,/return NextResponse\.json\(\{ ok: true \}\)/)});
+test('el login verifica sesión y perfil antes de abrir el panel',async()=>{const route=await readFile(resolve(root,'src/app/auth/session-check/route.ts'),'utf8');assert.match(route,/auth\.getUser\(\)/);assert.match(route,/from\('profiles'\)/);assert.match(route,/La sesión está activa, pero falta el perfil/)});
+test('la migración concede acceso API a authenticated y conserva RLS',async()=>{const sql=await readFile(resolve(root,'supabase/migrations/202611020001_api_role_grants.sql'),'utf8');assert.match(sql,/grant select, insert, update, delete on table/i);assert.match(sql,/to authenticated/i);assert.match(sql,/Row Level Security remains enabled/i)});

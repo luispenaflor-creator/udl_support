@@ -1,0 +1,3 @@
+# Alcance funcional considerado
+
+Requisitos recuperados del chat referenciado: sistema institucional completo UDL Support; Next.js y TypeScript; Supabase PostgreSQL/Auth/Storage/RLS; perfiles solicitante, agente, directivo y administrador; ocho planteles; tickets, asignaciones, escalamiento, SLA, encuestas, paneles, reportes y auditoría; integración Gmail API, Google Cloud Pub/Sub y Gmail History API; notificaciones por correo y push; correo inicial mesadeayuda@udlondres.com editable por administración; GitHub y Vercel; documentación en español. El documento Markdown original (aprox. 29 KB) no estaba presente en los archivos adjuntos ni en la carpeta de este proyecto, así que esta lista recupera solo lo que quedó visible en el historial.

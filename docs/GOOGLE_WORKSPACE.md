@@ -1,0 +1,3 @@
+# Google Workspace: pasos pendientes
+
+Crear proyecto en Google Cloud, habilitar Gmail API y Pub/Sub. Crear topic y permitir publicar a Gmail. Configurar cliente OAuth Web, dominios autorizados y scopes mínimos para Gmail. Autorizar el buzón institucional. Configurar push subscription HTTPS con OIDC y audiencia limitada. Implementar endpoint de callback OAuth y guardar refresh token cifrado. Iniciar Gmail Watch y renovarlo antes de expirar; guardar historyId y reconciliar con Gmail History API. Deduplicar mensajes, procesar MIME/adjuntos, asociar respuestas, enviar respuestas/notificaciones y reintentar fallas. Validar criptográficamente identidad Pub/Sub antes de aceptar tráfico. Nada de esto se encuentra activado en esta entrega.
