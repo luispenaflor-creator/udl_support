@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { access } from '@/lib/auth';
 import { allCampusNames } from '@/lib/campuses';
 import { isolatedPublicClient, serviceClient } from '@/lib/supabase/admin';
+import { siteUrl } from '@/lib/siteUrl';
 
 const ROLES = ['solicitante', 'agente', 'directivo', 'administrador'] as const;
 const back = (kind: 'ok' | 'error', msg: string, extra = ''): never => redirect(`/admin/usuarios?${kind}=${encodeURIComponent(msg)}${extra}`);
@@ -96,6 +97,68 @@ export async function updateUser(f: FormData) {
   back('ok', `Perfil de ${d.full_name} actualizado.`, `#u-${d.id}`);
 }
 
+// Cambia el correo de acceso (Auth) y el del perfil. Requiere la clave de servicio.
+export async function changeEmail(f: FormData) {
+  const { s, user } = await access(['administrador']);
+  const id = z.string().uuid().safeParse(f.get('id'));
+  const email = z.string().trim().toLowerCase().email('Correo inválido').safeParse(f.get('email'));
+  if (!id.success) back('error', 'Usuario inválido');
+  if (!email.success) back('error', email.error!.issues[0].message);
+  const admin = serviceClient();
+  if (!admin) back('error', 'Cambiar el correo requiere SUPABASE_SERVICE_ROLE_KEY en el servidor');
+  const { data: before } = await s.from('profiles').select('email,full_name').eq('id', id.data!).single();
+  if (!before) back('error', 'El usuario no existe');
+  if (before!.email === email.data) back('ok', 'El correo no cambió.', `#u-${id.data}`);
+  const { data: taken } = await s.from('profiles').select('id').eq('email', email.data!).neq('id', id.data!).maybeSingle();
+  if (taken) back('error', 'Ese correo ya pertenece a otra cuenta');
+  // Se confirma de inmediato para que la persona pueda entrar con el correo nuevo.
+  const { error: ae } = await admin!.auth.admin.updateUserById(id.data!, { email: email.data!, email_confirm: true });
+  if (ae) back('error', /already|registered|exists/i.test(ae.message) ? 'Ese correo ya está registrado' : `Supabase no cambió el correo: ${ae.message}`);
+  const { error: pe } = await s.from('profiles').update({ email: email.data! }).eq('id', id.data!);
+  if (pe) back('error', `El acceso cambió, pero no el perfil: ${pe.message}`);
+  await s.from('audit_logs').insert({ actor_id: user.id, action: 'usuario_correo_cambiado', entity_type: 'profiles', entity_id: id.data, metadata: { cambios: { email: { de: before!.email, a: email.data } } } });
+  revalidatePath('/admin/usuarios');
+  back('ok', `Correo de ${before!.full_name} actualizado. Ahora entra con ${email.data}.`, `#u-${id.data}`);
+}
+
+/**
+ * Elimina una cuenta definitivamente. Solo si no tiene historial: tickets, mensajes, evaluaciones, escalaciones
+ * o acciones registradas. Si lo tiene, se debe desactivar para conservar la trazabilidad.
+ */
+export async function deleteUser(f: FormData) {
+  const { s, user } = await access(['administrador']);
+  const id = z.string().uuid().safeParse(f.get('id'));
+  if (!id.success) back('error', 'Usuario inválido');
+  if (id.data === user.id) back('error', 'No puedes eliminar tu propia cuenta');
+  const admin = serviceClient();
+  if (!admin) back('error', 'Eliminar cuentas requiere SUPABASE_SERVICE_ROLE_KEY en el servidor');
+  const { data: target } = await s.from('profiles').select('email,full_name,role').eq('id', id.data!).single();
+  if (!target) back('error', 'El usuario no existe');
+  if (String(f.get('confirm') ?? '').trim().toLowerCase() !== target!.email.toLowerCase()) back('error', 'Para confirmar, escribe exactamente el correo de la cuenta');
+
+  const uid = id.data!;
+  const count = async (table: string, col: string) => (await admin!.from(table).select('*', { count: 'exact', head: true }).eq(col, uid)).count ?? 0;
+  const refs = {
+    tickets: (await count('tickets', 'requester_id')) + (await count('tickets', 'assignee_id')),
+    mensajes: await count('ticket_comments', 'author_id'),
+    historial: await count('ticket_events', 'actor_id'),
+    evaluaciones: await count('surveys', 'requester_id'),
+    escalaciones: (await count('ticket_escalations', 'requested_by')) + (await count('ticket_escalations', 'attended_by')) + (await count('escalation_updates', 'author_id')),
+    auditoria: await count('audit_logs', 'actor_id'),
+    adjuntos: await count('attachments', 'uploader_id'),
+  };
+  const used = Object.entries(refs).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`);
+  if (used.length) back('error', `${target!.full_name} tiene historial (${used.join(', ')}). Desactiva la cuenta para que no pueda entrar y se conserve la trazabilidad.`, `#u-${uid}`);
+
+  await admin!.from('push_subscriptions').delete().eq('user_id', uid);
+  // Borrar el usuario de Auth elimina su perfil en cascada (y sus avisos en la app).
+  const { error } = await admin!.auth.admin.deleteUser(uid);
+  if (error) back('error', `Supabase no eliminó la cuenta: ${error.message}`);
+  await s.from('audit_logs').insert({ actor_id: user.id, action: 'usuario_eliminado', entity_type: 'profiles', entity_id: uid, metadata: { email: target!.email, nombre: target!.full_name, role: target!.role } });
+  revalidatePath('/admin/usuarios');
+  back('ok', `Cuenta de ${target!.full_name} eliminada.`);
+}
+
 export async function resetPassword(f: FormData) {
   const { s, user } = await access(['administrador']);
   const id = z.string().uuid().safeParse(f.get('id'));
@@ -110,7 +173,7 @@ export async function resetPassword(f: FormData) {
     const { error } = await admin.auth.admin.updateUserById(id.data!, { password });
     if (error) back('error', error.message);
   } else {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = siteUrl();
     const { error } = await isolatedPublicClient().auth.resetPasswordForEmail(target!.email, { redirectTo: `${appUrl}/login` });
     if (error) back('error', `No se pudo enviar el correo: ${error.message}`);
   }

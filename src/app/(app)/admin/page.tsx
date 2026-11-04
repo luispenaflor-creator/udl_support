@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { access } from '@/lib/auth';
 import { PRIORITY_LABEL, PRIORITY_ORDER, relativeTime, type Priority } from '@/lib/dashboard';
-import { hasServiceRole } from '@/lib/supabase/admin';
+import { hasServiceRole, serviceClient } from '@/lib/supabase/admin';
 import { sendMail, smtpConfigured } from '@/lib/notify';
 import { Icon } from '@/components/Icon';
 import { Empty } from '@/components/dashboard';
@@ -54,6 +54,20 @@ async function testMail() {
   back('ok', `Correo de prueba enviado a ${p.email}. Revisa tu bandeja (y la carpeta de spam).`);
 }
 
+// Envía un aviso a la propia cuenta por el mismo camino que los reales (tabla notifications + tiempo real).
+async function testNotice() {
+  'use server';
+  const { p } = await access(['administrador']);
+  const db = serviceClient();
+  if (!db) back('error', 'Los avisos requieren SUPABASE_SERVICE_ROLE_KEY en el servidor');
+  const { error } = await db!.from('notifications').insert({
+    user_id: p.id, event: 'prueba', title: 'Aviso de prueba', link: '/admin',
+    body: 'Si escuchaste un sonido y ves este recuadro, los avisos en tiempo real funcionan.',
+  });
+  if (error) back('error', /notifications/.test(error.message) ? 'Falta ejecutar la migración 202611080001 en Supabase' : error.message);
+  back('ok', 'Aviso de prueba enviado. Debe sonar y aparecer en la campana.');
+}
+
 export default async function Admin({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
   const sp = await searchParams;
   const { s } = await access(['administrador']);
@@ -103,7 +117,10 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
             <li className={service ? 'ok' : ''}><Icon name={service ? 'checkCircle' : 'circle'} size={16} />Clave de servicio (destinatarios y bitácora)</li>
           </ul>
           <p className="muted small-print">Avisos: ticket nuevo, asignación, mensajes, cambio de estado, resolución y escalaciones. Las notas internas no se envían. Sin configuración no se manda ningún correo.</p>
-          <form action={testMail}><button className="small" disabled={!smtp}><Icon name="mail" size={16} />Enviar correo de prueba a mi cuenta</button></form>
+          <div className="head-actions">
+            <form action={testMail}><button className="small" disabled={!smtp}><Icon name="mail" size={16} />Enviar correo de prueba a mi cuenta</button></form>
+            <form action={testNotice}><button className="small ghost-btn" disabled={!service}><Icon name="bell" size={16} />Enviar aviso de prueba</button></form>
+          </div>
         </section>
 
         <section className="glass panel reveal" style={{ '--d': '160ms' } as React.CSSProperties}>

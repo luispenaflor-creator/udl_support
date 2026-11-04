@@ -29,6 +29,25 @@ function copy(event: MailEvent, t: MailTicket | null, name: string, actor: strin
   }
 }
 
+// Texto corto para el aviso dentro de la app (campana y notificación emergente).
+export function inAppText(opts: { event: MailEvent; ticket: MailTicket; actorName: string; message?: string | null }): { title: string; body: string } {
+  const { event, ticket: t, actorName: a } = opts;
+  const msg = opts.message?.replace(/\s+/g, ' ').trim();
+  const short = (s: string) => (s.length > 140 ? `${s.slice(0, 137)}…` : s);
+  const title: Record<MailEvent, string> = {
+    ticket_recibido: 'Recibimos tu solicitud',
+    ticket_creado: `Nuevo ticket ${PRIORITY[t.priority]?.toLowerCase() ?? ''} en ${t.campus}`,
+    ticket_asignado: `${a} atiende el ticket`,
+    comentario: `Mensaje nuevo de ${a}`,
+    estado: t.status === 'en_espera' ? 'Soporte necesita tu respuesta' : `Tu ticket está ${STATUS[t.status]?.toLowerCase() ?? t.status}`,
+    ticket_resuelto: 'Tu solicitud fue resuelta',
+    escalacion: `${a} escaló un ticket`,
+    escalacion_atendida: 'Seguimiento de dirección a la escalación',
+    prueba: 'Aviso de prueba',
+  };
+  return { title: `${t.folio} · ${title[event]}`, body: short(msg || t.subject) };
+}
+
 export function renderMail(opts: { event: MailEvent; ticket: MailTicket | null; recipientName: string; actorName: string; message?: string | null; appUrl: string }) {
   const { event, ticket, appUrl } = opts;
   const name = opts.recipientName.split(' ')[0] || opts.recipientName;

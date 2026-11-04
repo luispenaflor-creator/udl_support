@@ -7,7 +7,7 @@ import { hasServiceRole } from '@/lib/supabase/admin';
 import { Icon } from '@/components/Icon';
 import { Empty } from '@/components/dashboard';
 import { Avatar } from '@/components/people';
-import { createUser, resetPassword, updateUser } from './actions';
+import { changeEmail, createUser, deleteUser, resetPassword, updateUser } from './actions';
 
 type Profile = {
   id: string; email: string; full_name: string; role: Role; campus: string | null;
@@ -126,6 +126,23 @@ export default async function Users({ searchParams }: { searchParams: Promise<Se
                       ) : <p className="muted small-print">Se enviará un correo de recuperación a {u.email}.</p>}
                       <button className="small ghost-btn"><Icon name="key" size={16} />{service ? 'Asignar contraseña' : 'Enviar recuperación'}</button>
                     </form>
+                    {service && (
+                      <form action={changeEmail} className="form user-form reset">
+                        <input type="hidden" name="id" value={u.id} />
+                        <label>Correo de acceso<input type="email" name="email" required defaultValue={u.email} autoComplete="off" /></label>
+                        <button className="small ghost-btn"><Icon name="mail" size={16} />Cambiar correo</button>
+                      </form>
+                    )}
+                    {service && u.id !== user.id && (
+                      <form action={deleteUser} className="form user-form reset danger-zone">
+                        <input type="hidden" name="id" value={u.id} />
+                        <label>Eliminar cuenta · escribe <b>{u.email}</b> para confirmar
+                          <input name="confirm" required autoComplete="off" placeholder={u.email} />
+                        </label>
+                        <button className="small danger"><Icon name="x" size={16} />Eliminar definitivamente</button>
+                        <p className="muted small-print">Solo se pueden eliminar cuentas sin historial. Si la persona ya tiene tickets o mensajes, desactívala arriba.</p>
+                      </form>
+                    )}
                   </details>
                 </li>
               ))}

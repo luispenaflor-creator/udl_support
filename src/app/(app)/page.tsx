@@ -90,7 +90,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
             </span>
           </p>
         </div>
-        <Link className="button cta" href="/tickets/nuevo"><Icon name="plus" />Crear ticket</Link>
+        <div className="hero-actions">
+          <Link className="button cta" href="/tickets/nuevo"><Icon name="plus" />{role === 'solicitante' ? 'Pedir soporte' : 'Crear ticket'}</Link>
+          <Link className="link-more" href="/ayuda"><Icon name="sparkle" size={14} />¿Primera vez? Mira cómo funciona</Link>
+        </div>
         <div className="hero-orb" aria-hidden="true" />
       </header>
 

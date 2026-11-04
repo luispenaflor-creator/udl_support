@@ -6,3 +6,6 @@ coverage
 
 .npm-cache/
 *.tsbuildinfo
+
+# Configuración local de Claude Code (vista previa)
+.claude/

@@ -214,7 +214,10 @@ test('las plantillas de correo escapan HTML y enlazan al ticket o a la bandeja',
 test('las notificaciones excluyen a quien actúa, cuentas inactivas y notas internas',async()=>{
   const n=await readFile(resolve(root,'src/lib/notify.ts'),'utf8');
   const a=await readFile(resolve(root,'src/app/(app)/tickets/[id]/actions.ts'),'utf8');
-  assert.match(n,/to\.id === opts\.actorId \|\| seen\.has\(to\.id\) \|\| to\.active === false \|\| to\.notify_email === false/);
+  // Destinatarios: nunca quien actúa, sin duplicados, solo cuentas activas; el correo además respeta la preferencia.
+  assert.match(n,/to\.id === opts\.actorId \|\| seen\.has\(to\.id\) \|\| to\.active === false/);
+  assert.match(n,/if \(!mail \|\| to\.notify_email === false \|\| !to\.email\) continue;/);
+  assert.match(n,/from\('notifications'\)\.insert/);
   assert.match(n,/if \(!smtpConfigured\(\)\) \{\s*error = 'SMTP no configurado';/);
   assert.match(a,/if \(!internal\) after\(\(\) => notifyTicket\('comentario'/);
 });
@@ -262,6 +265,35 @@ test('"En espera" deja claro que soporte espera al solicitante',async()=>{
   assert.match(sql,/t\.status = 'en_espera' and t\.requester_id = new\.author_id/);
   const layout=await readFile(resolve(root,'src/app/(app)/layout.tsx'),'utf8');
   assert.match(layout,/Soporte espera mi respuesta/);
+});
+
+test('cerrar sesión regresa al dominio desde el que se pidió',async()=>{
+  const r=await readFile(resolve(root,'src/app/auth/signout/route.ts'),'utf8');
+  assert.match(r,/new URL\('\/login', req\.nextUrl\.origin\)/);
+  assert.doesNotMatch(r,/localhost/);
+});
+
+test('los avisos en la app son por usuario y en tiempo real',async()=>{
+  const sql=await readFile(resolve(root,'supabase/migrations/202611080001_notificaciones_en_app.sql'),'utf8');
+  assert.match(sql,/using \(user_id = auth\.uid\(\)\)/);
+  assert.match(sql,/grant update \(read_at\) on table public\.notifications to authenticated/);
+  assert.match(sql,/alter publication supabase_realtime add table public\.notifications/);
+  const {inAppText}=await import('../src/lib/mailTemplates.ts');
+  const t={id:'1',folio:'UDL-9',subject:'Sin red',campus:'Roma',priority:'alta',status:'en_espera'};
+  assert.equal(inAppText({event:'estado',ticket:t,actorName:'Ana'}).title,'UDL-9 · Soporte necesita tu respuesta');
+  assert.equal(inAppText({event:'comentario',ticket:t,actorName:'Ana',message:'x'.repeat(200)}).body.length,138);
+  const sb=await readFile(resolve(root,'src/components/Sidebar.tsx'),'utf8');
+  // Una sola campana montada (una suscripción): en la barra móvil o en el menú, nunca en ambos.
+  assert.match(sb,/\{mobile && bell\}/);
+  assert.match(sb,/\{!mobile && <span className="side-bell">\{bell\}<\/span>\}/);
+});
+
+test('eliminar cuentas exige confirmación y no borra historial',async()=>{
+  const a=await readFile(resolve(root,'src/app/(app)/admin/usuarios/actions.ts'),'utf8');
+  assert.match(a,/if \(id\.data === user\.id\) back\('error', 'No puedes eliminar tu propia cuenta'\)/);
+  assert.match(a,/String\(f\.get\('confirm'\) \?\? ''\)\.trim\(\)\.toLowerCase\(\) !== target!\.email\.toLowerCase\(\)/);
+  assert.match(a,/if \(used\.length\) back\('error'/);
+  assert.match(a,/auth\.admin\.updateUserById\(id\.data!, \{ email: email\.data!, email_confirm: true \}\)/);
 });
 
 test('solo el administrador administra planteles',async()=>{

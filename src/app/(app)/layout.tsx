@@ -4,6 +4,7 @@ import { ticketsUrl } from '@/lib/dashboard';
 import type { Role } from '@/lib/types';
 import { Avatar } from '@/components/people';
 import { Sidebar, type NavGroup } from '@/components/Sidebar';
+import type { Notice } from '@/components/NotificationCenter';
 
 const ROLE_LABEL: Record<Role, string> = { solicitante: 'Solicitante', agente: 'Agente', directivo: 'Directivo', administrador: 'Administrador' };
 const OPEN = '(resuelto,cerrado)';
@@ -21,7 +22,13 @@ export default async function Layout({ children }: { children: React.ReactNode }
     if (role === 'directivo' && p.campus) q = q.eq('campus', p.campus);
     return q;
   };
+  // Últimos avisos para la campana (si la tabla aún no existe, la campana arranca vacía).
+  const noticesQ = Promise.all([
+    s.from('notifications').select('id,title,body,link,read_at,created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+    s.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', user.id).is('read_at', null),
+  ]);
 
+  const help = { href: '/ayuda', label: 'Ayuda: cómo funciona', icon: 'sparkle' as const, hint: 'Guía rápida para usar el sistema' };
   let groups: NavGroup[];
   if (role === 'solicitante') {
     const [open, waiting, closedMine, rated] = await Promise.all([
@@ -33,14 +40,15 @@ export default async function Layout({ children }: { children: React.ReactNode }
     const toRate = Math.max(0, (closedMine.count ?? 0) - (rated.count ?? 0));
     groups = [
       { title: 'Inicio', items: [
-        { href: '/', label: 'Panel', icon: 'home' },
-        { href: '/tickets/nuevo', label: 'Crear ticket', icon: 'plus' },
+        { href: '/', label: 'Inicio', icon: 'home', hint: 'Resumen de tus solicitudes' },
+        { href: '/tickets/nuevo', label: 'Pedir soporte', icon: 'plus', hint: 'Reporta un problema o solicita ayuda' },
+        help,
       ] },
       { title: 'Mis solicitudes', items: [
-        { href: '/tickets', label: 'Todas', icon: 'ticket' },
-        { href: ticketsUrl({ abiertos: '1' }), label: 'En atención', icon: 'inbox', badge: open },
-        { href: ticketsUrl({ estado: 'en_espera' }), label: 'Soporte espera mi respuesta', icon: 'hand', badge: waiting, tone: 'amber' },
-        { href: ticketsUrl({ estado: 'resuelto,cerrado' }), label: 'Resueltas', icon: 'star', badge: toRate, tone: 'amber' },
+        { href: '/tickets', label: 'Todas mis solicitudes', icon: 'ticket', hint: 'Historial completo' },
+        { href: ticketsUrl({ abiertos: '1' }), label: 'En atención', icon: 'inbox', hint: 'Soporte las está atendiendo', badge: open },
+        { href: ticketsUrl({ estado: 'en_espera' }), label: 'Soporte espera mi respuesta', icon: 'hand', hint: 'Te pidieron información para continuar', badge: waiting, tone: 'amber' },
+        { href: ticketsUrl({ estado: 'resuelto,cerrado' }), label: 'Resueltas', icon: 'star', hint: toRate ? 'Tienes atenciones por calificar' : 'Solicitudes terminadas', badge: toRate, tone: 'amber' },
       ] },
     ];
   } else {
@@ -70,44 +78,46 @@ export default async function Layout({ children }: { children: React.ReactNode }
     ]);
     const work: NavGroup = { title: role === 'agente' ? 'Mi trabajo' : 'Supervisión', items: [
       ...(role === 'agente'
-        ? [{ href: ticketsUrl({ abiertos: '1', asignado: 'mio' }), label: 'Asignados a mí', icon: 'user' as const, badge: mine }]
-        : [{ href: '/escalaciones', label: 'Escalaciones', icon: 'zap' as const, badge: escalated, tone: 'rose' as const }]),
-      { href: ticketsUrl({ abiertos: '1', asignado: 'sin' }), label: role === 'agente' ? 'Disponibles para tomar' : 'Sin asignar', icon: 'inbox', badge: unassigned, tone: 'teal' },
-      { href: ticketsUrl({ sla: 'riesgo' }), label: 'Por vencer', icon: 'hourglass', badge: atRisk, tone: 'amber' },
-      { href: ticketsUrl({ sla: 'vencido' }), label: 'Vencidos', icon: 'alert', badge: overdue, tone: 'rose' },
+        ? [{ href: ticketsUrl({ abiertos: '1', asignado: 'mio' }), label: 'Mis tickets', icon: 'user' as const, hint: 'Los que tomaste y debes resolver', badge: mine }]
+        : [{ href: '/escalaciones', label: 'Escalaciones', icon: 'zap' as const, hint: 'Casos que piden intervención de dirección', badge: escalated, tone: 'rose' as const }]),
+      { href: ticketsUrl({ abiertos: '1', asignado: 'sin' }), label: role === 'agente' ? 'Disponibles para tomar' : 'Sin asignar', icon: 'inbox', hint: role === 'agente' ? 'Tickets nuevos que nadie ha tomado' : 'Tickets que aún no tienen agente', badge: unassigned, tone: 'teal' },
+      { href: ticketsUrl({ sla: 'riesgo' }), label: 'Por vencer', icon: 'hourglass', hint: 'Se acerca su plazo de atención', badge: atRisk, tone: 'amber' },
+      { href: ticketsUrl({ sla: 'vencido' }), label: 'Vencidos', icon: 'alert', hint: 'Pasaron su plazo de atención', badge: overdue, tone: 'rose' },
     ] };
     groups = [
       { title: 'Inicio', items: [
-        { href: '/', label: 'Panel', icon: 'home' },
-        ...(role !== 'directivo' ? [{ href: '/tickets/nuevo', label: 'Crear ticket', icon: 'plus' as const }] : []),
+        { href: '/', label: 'Inicio', icon: 'home', hint: 'Indicadores y resumen' },
+        ...(role !== 'directivo' ? [{ href: '/tickets/nuevo', label: 'Crear ticket', icon: 'plus' as const, hint: 'Registrar una solicitud' }] : []),
+        help,
       ] },
       work,
       { title: 'Consultas', items: [
-        { href: '/tickets', label: 'Todos los tickets', icon: 'ticket' },
-        { href: ticketsUrl({ abiertos: '1' }), label: 'Abiertos', icon: 'list' },
-        { href: '/reportes', label: 'Reportes', icon: 'chart' },
+        { href: '/tickets', label: 'Todos los tickets', icon: 'ticket', hint: 'Buscar y filtrar cualquier ticket' },
+        { href: ticketsUrl({ abiertos: '1' }), label: 'Abiertos', icon: 'list', hint: 'Todo lo que sigue en proceso' },
+        { href: '/reportes', label: 'Reportes', icon: 'chart', hint: 'Gráficas y descarga en Excel' },
         ...(role !== 'agente' ? [
-          { href: '/opiniones', label: 'Opiniones', icon: 'star' as const, badge: low, tone: 'rose' as const },
-          { href: '/#ranking', label: 'Ranking de agentes', icon: 'trophy' as const },
+          { href: '/opiniones', label: 'Opiniones', icon: 'star' as const, hint: 'Calificaciones de los usuarios', badge: low, tone: 'rose' as const },
+          { href: '/#ranking', label: 'Ranking de agentes', icon: 'trophy' as const, hint: 'Desempeño del equipo' },
         ] : []),
       ] },
     ];
     if (role === 'administrador') {
       groups.push({ title: 'Administración', items: [
-        { href: '/admin/usuarios', label: 'Usuarios y perfiles', icon: 'users' },
-        { href: '/admin/planteles', label: 'Planteles', icon: 'building' },
-        { href: '/admin/auditoria', label: 'Auditoría', icon: 'shield' },
-        { href: '/admin', label: 'Configuración', icon: 'settings' },
+        { href: '/admin/usuarios', label: 'Usuarios y perfiles', icon: 'users', hint: 'Altas, perfiles y contraseñas' },
+        { href: '/admin/planteles', label: 'Planteles', icon: 'building', hint: 'Catálogo de planteles' },
+        { href: '/admin/auditoria', label: 'Auditoría', icon: 'shield', hint: 'Quién cambió qué y cuándo' },
+        { href: '/admin', label: 'Configuración', icon: 'settings', hint: 'Plazos, correo y avisos' },
       ] });
     }
   }
+  const [{ data: noticeRows }, { count: unread }] = await noticesQ;
 
   return (
     <div className="layout">
       <a href="#contenido" className="skip">Saltar al contenido</a>
       <Suspense fallback={<aside className="side glass" />}>
-        <Sidebar groups={groups} roleLabel={ROLE_LABEL[role]}
-          user={{ name: p.full_name, detail: p.job_title || p.campus || 'Todos los planteles', avatar: <Avatar name={p.full_name} src={p.avatar_url} size={38} /> }} />
+        <Sidebar groups={groups} roleLabel={ROLE_LABEL[role]} notices={{ items: (noticeRows ?? []) as Notice[], unread: unread ?? 0 }}
+          user={{ id: user.id, name: p.full_name, detail: p.job_title || p.campus || 'Todos los planteles', avatar: <Avatar name={p.full_name} src={p.avatar_url} size={38} /> }} />
       </Suspense>
       <main className="main" id="contenido">{children}</main>
     </div>

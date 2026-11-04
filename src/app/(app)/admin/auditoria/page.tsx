@@ -15,6 +15,8 @@ const ACTIONS: Record<string, { label: string; icon: IconName; tone: string }> =
   configuracion_actualizada: { label: 'Configuración', icon: 'settings', tone: 'violet' },
   ticket_editado: { label: 'Ticket editado', icon: 'edit', tone: 'teal' },
   tickets_exportados: { label: 'Excel de tickets', icon: 'download', tone: 'amber' },
+  usuario_correo_cambiado: { label: 'Cambio de correo', icon: 'mail', tone: 'violet' },
+  usuario_eliminado: { label: 'Cuenta eliminada', icon: 'x', tone: 'amber' },
   plantel_creado: { label: 'Plantel agregado', icon: 'building', tone: 'teal' },
   plantel_actualizado: { label: 'Plantel editado', icon: 'building', tone: 'violet' },
   plantel_eliminado: { label: 'Plantel eliminado', icon: 'building', tone: 'amber' },

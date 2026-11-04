@@ -4,12 +4,13 @@
 // - Se invoca con after() para no retrasar la respuesta al usuario.
 import nodemailer from 'nodemailer';
 import { serviceClient } from './supabase/admin';
-import { renderMail, type MailEvent, type MailTicket } from './mailTemplates';
+import { siteUrl } from './siteUrl';
+import { inAppText, renderMail, type MailEvent, type MailTicket } from './mailTemplates';
 
 type Profile = { id: string; email: string; full_name: string; role: string; campus: string | null; active?: boolean; notify_email?: boolean };
 
 export const smtpConfigured = () => Boolean(process.env.SMTP_HOST?.trim() && process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
-const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+const appUrl = siteUrl;
 
 function transport() {
   const port = Number(process.env.SMTP_PORT || 587);
@@ -68,12 +69,15 @@ export async function notifyTicket(event: Exclude<MailEvent, 'ticket_recibido' |
       return local.length ? local : all;
     };
 
-    const send: { to: Profile; event: MailEvent }[] = [];
-    const add = (p: Profile | null | undefined, ev: MailEvent = event) => { if (p) send.push({ to: p, event: ev }); };
+    // `mail: false` = solo aviso dentro de la app (p. ej. supervisión de tickets nuevos, para no saturar correos).
+    const send: { to: Profile; event: MailEvent; mail: boolean }[] = [];
+    const add = (p: Profile | null | undefined, ev: MailEvent = event, mail = true) => { if (p) send.push({ to: p, event: ev, mail }); };
 
     if (event === 'ticket_creado') {
       add(await byId(t.requester_id), 'ticket_recibido');
       for (const a of await agentsOf(t.campus)) add(a);
+      const { data } = await db.from('profiles').select('*').in('role', ['directivo', 'administrador']);
+      for (const d of (data ?? []) as Profile[]) if (d.role === 'administrador' || !d.campus || d.campus === t.campus) add(d, event, false);
     } else if (event === 'ticket_asignado') {
       add(await byId(t.assignee_id)); add(await byId(t.requester_id));
     } else if (event === 'comentario') {
@@ -89,12 +93,26 @@ export async function notifyTicket(event: Exclude<MailEvent, 'ticket_recibido' |
       add(await byId(opts.recipientId ?? null));
     }
 
-    // Sin duplicados, sin quien hizo la acción, solo cuentas activas con correo habilitado.
+    // Sin duplicados, sin quien hizo la acción y solo cuentas activas.
     const seen = new Set<string>();
-    const ticket: MailTicket = { id: t.id, folio: t.folio, subject: t.subject, campus: t.campus, priority: t.priority, status: t.status };
-    for (const { to, event: ev } of send) {
-      if (to.id === opts.actorId || seen.has(to.id) || to.active === false || to.notify_email === false || !to.email) continue;
+    const targets = send.filter(({ to }) => {
+      if (to.id === opts.actorId || seen.has(to.id) || to.active === false) return false;
       seen.add(to.id);
+      return true;
+    });
+    const ticket: MailTicket = { id: t.id, folio: t.folio, subject: t.subject, campus: t.campus, priority: t.priority, status: t.status };
+
+    // 1) Aviso dentro de la app (campana, sonido y notificación emergente en tiempo real).
+    if (targets.length) {
+      const link = event === 'escalacion' ? '/escalaciones' : `/tickets/${t.id}`;
+      const { error } = await db.from('notifications').insert(targets.map(({ to, event: ev }) => ({
+        user_id: to.id, ticket_id: t.id, event: ev, link, ...inAppText({ event: ev, ticket, actorName, message: opts.message }),
+      })));
+      if (error) console.error(`[notify] aviso en app ${event}:`, error.message);
+    }
+    // 2) Correo, si la persona lo tiene habilitado.
+    for (const { to, event: ev, mail } of targets) {
+      if (!mail || to.notify_email === false || !to.email) continue;
       await sendMail({ to, event: ev, ticket, actorName, message: opts.message });
     }
   } catch (e) {
