@@ -736,7 +736,9 @@ html.drawer-open { overflow: hidden; }
 
 /* Configuración */
 .sla-table { display: grid; gap: 6px; }
-.sla-row { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 14px; align-items: center; }
+.sla-row { display: grid; grid-template-columns: minmax(84px, 140px) minmax(0, 1fr) minmax(0, 1fr); gap: clamp(8px, 2vw, 14px); align-items: center; }
+.sla-row > * { min-width: 0; }
+.sla-row.head span { overflow-wrap: anywhere; }
 .sla-row.head { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
 .sla-row .chip { justify-self: start; }
 .sla-row input { width: 100%; border: 1px solid var(--stroke); border-radius: 10px; padding: 9px 12px; background: rgb(var(--lo) / .45); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; }
@@ -1035,3 +1037,34 @@ details[open] > summary .edit-hint { color: var(--ink); }
 :root[data-theme="light"] .menu-btn { color: var(--ink); }
 :root[data-theme="light"] .icon-btn:hover { color: #9f1239; }
 :root[data-theme="light"] .avatar { color: #fff; }
+
+/* ============ Paneles flotantes opacos (ambos temas) ============
+   El menú en celular, los avisos, las notificaciones y la barra superior se dibujan ENCIMA del contenido.
+   Con vidrio translúcido el texto de abajo se mezclaba con el de arriba; aquí llevan fondo casi sólido.
+   :root[data-theme] iguala la especificidad de las reglas de vidrio del tema claro y, por ir después, gana. */
+:root { --float-bg: rgba(24, 21, 33, .98); --bar-bg: rgba(21, 19, 29, .9); }
+:root[data-theme="light"] { --float-bg: rgba(255, 255, 255, .98); --bar-bg: rgba(250, 249, 253, .92); }
+:root[data-theme] .notif-panel,
+:root[data-theme] .toast { background: var(--float-bg); }
+:root[data-theme="light"] .notif-panel,
+:root[data-theme="light"] .toast { border-color: rgba(40, 32, 70, .14); box-shadow: 0 24px 60px -16px rgba(40, 30, 80, .4); }
+@media (max-width: 1000px) {
+  :root[data-theme] .side { background: var(--float-bg); }
+  :root[data-theme] .mobile-bar { background: var(--bar-bg); }
+  :root[data-theme="light"] .mobile-bar { border-color: rgba(40, 32, 70, .1); box-shadow: 0 8px 24px -14px rgba(40, 30, 80, .35); }
+  :root[data-theme="light"] .drawer-scrim { background: rgba(40, 32, 70, .35); }
+}
+
+/* Avisos de color en tema claro: conservan su tinte (la regla general de vidrio claro lo borraba). */
+:root[data-theme="light"] .take-banner { background: linear-gradient(120deg, rgba(45,212,191,.18), rgba(255,255,255,.85)); border-color: rgba(13,148,136,.4); }
+:root[data-theme="light"] .reply-banner { background: linear-gradient(120deg, rgba(251,191,36,.22), rgba(255,255,255,.85)); border-color: rgba(217,119,6,.45); }
+:root[data-theme="light"] .solution { background: linear-gradient(160deg, rgba(34,197,94,.14), rgba(255,255,255,.85)); border-color: rgba(22,163,74,.4); }
+:root[data-theme="light"] .escalate-panel { border-color: rgba(225,29,72,.35); }
+:root[data-theme="light"] .classify-panel { border-color: rgba(217,119,6,.45); }
+
+/* Tarjeta del usuario en el menú: nombre y puesto en la primera línea; tema y "Salir" debajo, sin apretarse. */
+.side-user { flex-wrap: wrap; }
+.side-user-text { flex: 1 1 calc(100% - 60px); }
+.side-user .theme-btn { margin-left: auto; }
+:root[data-side="collapsed"] .side-user .theme-btn { margin-left: 0; }
+@media (max-width: 1000px) { :root[data-side="collapsed"] .side-user .theme-btn { margin-left: auto; } }
