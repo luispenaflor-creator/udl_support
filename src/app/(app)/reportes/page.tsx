@@ -58,7 +58,8 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
             <StatCard label="Tickets del periodo" value={sum.total} icon="ticket" tone="blue" hint={`${sum.open} siguen abiertos`} href={ticketsUrl(base)} delay={80} />
             <StatCard label="Resueltos" value={sum.closed} icon="checkCircle" tone="green" hint={sum.total ? `${Math.round((sum.closed / sum.total) * 100)} % del total` : 'Sin tickets'} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={130} />
             <StatCard label="Cumplimiento SLA" value={sum.slaPct} suffix="%" icon="shield" tone="cyan" hint={sum.slaPct === null ? 'Sin resueltos' : 'Resueltos dentro del plazo'} delay={180} />
-            <StatCard label="Tiempo de resolución" value={null} text={sum.avgResolutionMs === null ? undefined : formatDuration(sum.avgResolutionMs)} icon="timer" tone="violet" hint="Promedio desde la creación" delay={230} />
+            <StatCard label="Tiempo de solución" value={null} text={sum.avgSolveMs === null ? undefined : formatDuration(sum.avgSolveMs)} icon="timer" tone="violet"
+              hint={sum.avgSolveMs === null ? 'Sin resoluciones' : `De la asignación a la resolución${sum.avgResolutionMs === null ? '' : ` · total ${formatDuration(sum.avgResolutionMs)}`}`} delay={230} />
             <StatCard label="Satisfacción" value={null} text={avgScore === null ? undefined : `${avgScore.toFixed(1)} / 5`} icon="star" tone="amber" hint={`${surveys.length} evaluaciones`} delay={280} />
           </section>
 

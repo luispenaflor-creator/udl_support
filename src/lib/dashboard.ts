@@ -19,11 +19,27 @@ export type TicketRow = {
   resolved_at: string | null;
   assignee_id: string | null;
   requester_id: string;
+  assigned_at?: string | null; // primera asignación a un agente
+  area?: string | null;        // salón o área dentro del plantel
 };
 
 export const STATUS_ORDER: Status[] = ['nuevo', 'abierto', 'en_progreso', 'en_espera', 'resuelto', 'cerrado'];
 export const PRIORITY_ORDER: Priority[] = ['urgente', 'alta', 'media', 'baja'];
-export const CATEGORIES = ['Hardware', 'Software', 'Red', 'Correo', 'Accesos', 'Otro'] as const;
+// "Por clasificar" es el valor inicial: el solicitante no elige categoría, la asigna el agente.
+export const UNCLASSIFIED = 'Por clasificar';
+export const CATEGORIES = ['Hardware', 'Software', 'Red', 'Correo', 'Accesos', 'Audio y video', 'Otro', UNCLASSIFIED] as const;
+// Categorías que el agente puede elegir al clasificar.
+export const AGENT_CATEGORIES = CATEGORIES.filter((c) => c !== UNCLASSIFIED);
+
+// Fallas comunes que el solicitante elige como asunto. "Otro" le permite escribirlo.
+export const COMMON_ISSUES = [
+  'Transmisión de laptop a pantalla', 'Laptop Hyflex', 'Micrófono Hyflex', 'Control Hyflex', 'Pantalla Hyflex',
+  'Problemas con Zoom', 'Problemas de conexión a Internet', 'Problemas con mi equipo de cómputo', 'Problemas con Sure',
+  'Instalación de Software', 'Problemas con mi impresora',
+] as const;
+export const OTHER_ISSUE = 'Otro';
+// En Home Office no hay salón: la ubicación es opcional.
+export const HOME_OFFICE = 'Home Office';
 
 export const STATUS_LABEL: Record<Status, string> = {
   nuevo: 'Nuevo',
@@ -132,6 +148,11 @@ export function summarize(rows: TicketRow[], now = Date.now()) {
   const avgResolutionMs = resolvedWithDate.length
     ? resolvedWithDate.reduce((acc, t) => acc + (new Date(t.resolved_at!).getTime() - new Date(t.created_at).getTime()), 0) / resolvedWithDate.length
     : null;
+  // Tiempo de solución: desde que se asigna a un agente hasta que lo resuelve.
+  const solved = resolvedWithDate.filter((t) => t.assigned_at);
+  const avgSolveMs = solved.length
+    ? solved.reduce((acc, t) => acc + Math.max(0, new Date(t.resolved_at!).getTime() - new Date(t.assigned_at!).getTime()), 0) / solved.length
+    : null;
   return {
     total: rows.length,
     open: open.length,
@@ -142,6 +163,8 @@ export function summarize(rows: TicketRow[], now = Date.now()) {
     // null cuando todavía no hay tickets cerrados: no se inventa un porcentaje.
     slaPct: closed.length ? Math.round((onTime / closed.length) * 100) : null,
     avgResolutionMs,
+    avgSolveMs,
+    solvedCount: solved.length,
   };
 }
 
@@ -227,7 +250,7 @@ export function agentRanking(rows: TicketRow[], surveys: SurveyRow[], agents: Ag
       ...a,
       assigned: mine.length, open: s.open, resolved: s.closed, overdue: s.overdue, slaPct: s.slaPct,
       avgScore: scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null,
-      ratings: scores.length, avgResolutionMs: s.avgResolutionMs, points: 0,
+      ratings: scores.length, avgResolutionMs: s.avgSolveMs ?? s.avgResolutionMs, points: 0,
     };
   });
   const maxResolved = Math.max(1, ...stats.map((s) => s.resolved));

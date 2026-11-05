@@ -2,9 +2,10 @@ import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { notifyTicket } from '@/lib/notify';
 import { access } from '@/lib/auth';
-import { allCampusNames, campusNames } from '@/lib/campuses';
-import { CATEGORIES, PRIORITY_LABEL, PRIORITY_ORDER } from '@/lib/dashboard';
+import { campusNames } from '@/lib/campuses';
+import { COMMON_ISSUES, HOME_OFFICE, OTHER_ISSUE, PRIORITY_LABEL, PRIORITY_ORDER, UNCLASSIFIED } from '@/lib/dashboard';
 import { Icon } from '@/components/Icon';
+import { NewTicketFields } from '@/components/NewTicketFields';
 
 const PRIORITY_HINT: Record<string, string> = {
   urgente: 'Detiene clases u operación de un área completa',
@@ -17,21 +18,30 @@ export default async function New({ searchParams }: { searchParams: Promise<{ er
   const { error } = await searchParams;
   const { s, p } = await access();
   const campuses = await campusNames(s);
+  // Catálogo de salones/áreas por plantel (opcional: si está vacío o no existe, se escribe a mano).
+  const { data: areaRows } = await s.from('campus_areas').select('campus,name').eq('active', true).order('name');
+  const areas: Record<string, string[]> = {};
+  for (const a of (areaRows ?? []) as { campus: string; name: string }[]) (areas[a.campus] ??= []).push(a.name);
 
   async function save(f: FormData) {
     'use server';
     const { s, user } = await access();
-    const subject = String(f.get('subject') ?? '').trim();
+    const issue = String(f.get('issue') ?? '');
+    const subject = issue === OTHER_ISSUE ? String(f.get('subject_other') ?? '').trim() : issue;
     const description = String(f.get('description') ?? '').trim();
-    const category = String(f.get('category'));
     const priority = String(f.get('priority'));
     const campus = String(f.get('campus'));
+    const area = String(f.get('area') ?? '').trim().slice(0, 80);
     const fail = (m: string) => redirect(`/tickets/nuevo?error=${encodeURIComponent(m)}`);
-    if (subject.length < 5 || subject.length > 180) fail('El asunto debe tener entre 5 y 180 caracteres');
-    if (description.length < 10) fail('Describe el problema con al menos 10 caracteres');
-    if (!(CATEGORIES as readonly string[]).includes(category) || !(PRIORITY_ORDER as string[]).includes(priority)) fail('Categoría o prioridad no válida');
-    if (!(await allCampusNames(s)).includes(campus)) fail('Elige un plantel válido');
-    const { data, error } = await s.from('tickets').insert({ subject, description, category, campus, priority, requester_id: user.id }).select('id').single();
+    if (issue !== OTHER_ISSUE && !(COMMON_ISSUES as readonly string[]).includes(issue)) fail('Elige qué falla tienes');
+    if (subject.length < 5 || subject.length > 180) fail('Escribe el asunto (entre 5 y 180 caracteres)');
+    if (description.length < 10) fail('Escribe el detalle del problema (mínimo 10 caracteres)');
+    if (!(PRIORITY_ORDER as string[]).includes(priority)) fail('Prioridad no válida');
+    if (!(await campusNames(s)).includes(campus)) fail('Elige un plantel válido');
+    if (!area && campus !== HOME_OFFICE) fail('Indica el salón o área donde está la falla');
+    // La categoría la asigna el agente al atenderlo.
+    const row = { subject, description, category: UNCLASSIFIED, campus, area: area || null, priority, requester_id: user.id };
+    const { data, error } = await s.from('tickets').insert(row).select('id').single();
     if (error || !data) fail('No se pudo crear el ticket. Intenta de nuevo.');
     after(() => notifyTicket('ticket_creado', data!.id, { actorId: user.id, message: description }));
     redirect('/tickets/' + data!.id);
@@ -40,19 +50,11 @@ export default async function New({ searchParams }: { searchParams: Promise<{ er
   return (
     <div className="dash narrow">
       <header className="page-head reveal">
-        <div><h1>Crear ticket</h1><p className="muted">Cuéntanos qué pasa y en qué plantel; soporte te responderá por este medio.</p></div>
+        <div><h1>Crear ticket</h1><p className="muted">Elige la falla, dinos dónde estás y cuéntanos el detalle. Soporte te responderá por este medio.</p></div>
       </header>
       {error && <p className="flash err" role="alert"><Icon name="alert" size={18} />{error}</p>}
       <form action={save} className="glass panel form reveal" style={{ '--d': '60ms' } as React.CSSProperties}>
-        <label>Asunto<input name="subject" minLength={5} maxLength={180} required placeholder="Ej. El proyector del aula 204 no enciende" /></label>
-        <div className="field-grid">
-          <label>Categoría
-            <select name="category" defaultValue="Otro">{CATEGORIES.map((x) => <option key={x} value={x}>{x}</option>)}</select>
-          </label>
-          <label>Plantel
-            <select name="campus" defaultValue={p.campus && campuses.includes(p.campus) ? p.campus : campuses[0]}>{campuses.map((x) => <option key={x} value={x}>{x}</option>)}</select>
-          </label>
-        </div>
+        <NewTicketFields campuses={campuses} areas={areas} defaultCampus={p.campus && campuses.includes(p.campus) ? p.campus : campuses[0]} />
         <fieldset className="priority-pick">
           <legend>Prioridad</legend>
           {PRIORITY_ORDER.map((x) => (
@@ -62,7 +64,7 @@ export default async function New({ searchParams }: { searchParams: Promise<{ er
             </label>
           ))}
         </fieldset>
-        <label>Descripción<textarea name="description" minLength={10} required placeholder="¿Qué ocurre, desde cuándo y a quién afecta?" /></label>
+        <label>Detalle del problema <small className="muted">(obligatorio)</small><textarea name="description" minLength={10} required placeholder="¿Qué ocurre, desde cuándo y a quién afecta? Si aparece un mensaje de error, escríbelo." /></label>
         <button><Icon name="check" size={16} />Enviar solicitud</button>
       </form>
     </div>

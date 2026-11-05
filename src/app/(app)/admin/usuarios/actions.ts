@@ -30,6 +30,25 @@ const createSchema = z.object({
 
 const updateSchema = z.object({ ...profileFields, id: z.string().uuid(), active: z.enum(['on']).optional(), notify_email: z.enum(['on']).optional() });
 
+// Foto enviada por el selector (JPEG reducido en el navegador, como data URL). Se guarda en el bucket público "avatars".
+const MAX_AVATAR = 1_500_000;
+async function avatarFrom(f: FormData, userId: string, fallback: string | null): Promise<string | null> {
+  if (f.get('avatar_remove') === '1') return null;
+  const raw = String(f.get('avatar_data') ?? '');
+  if (!raw) return fallback;
+  const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(raw);
+  if (!m) back('error', 'La foto no tiene un formato válido');
+  const bytes = Buffer.from(m![2], 'base64');
+  if (bytes.length > MAX_AVATAR) back('error', 'La foto es demasiado grande');
+  const admin = serviceClient();
+  if (!admin) back('error', 'Subir fotos requiere SUPABASE_SERVICE_ROLE_KEY en el servidor');
+  const ext = m![1] === 'jpeg' ? 'jpg' : m![1];
+  const path = `${userId}/${Date.now()}.${ext}`;
+  const { error } = await admin!.storage.from('avatars').upload(path, bytes, { contentType: `image/${m![1]}`, upsert: true, cacheControl: '31536000' });
+  if (error) back('error', /bucket/i.test(error.message) ? 'Falta ejecutar la migración 202611090001 (bucket de fotos)' : `No se pudo subir la foto: ${error.message}`);
+  return admin!.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+}
+
 const read = (f: FormData, keys: string[]) => Object.fromEntries(keys.map((k) => [k, f.get(k) ?? '']));
 
 async function checkCampus(s: Awaited<ReturnType<typeof access>>['s'], campus: string | null) {
@@ -59,10 +78,11 @@ export async function createUser(f: FormData) {
     pendingConfirm = !data!.session;
   }
   if (!id) back('error', 'Supabase no devolvió el identificador de la cuenta');
+  const avatar = await avatarFrom(f, id!, d.avatar_url);
 
   // El perfil lo escribe el administrador con su propia sesión (política profiles_admin).
   const { error: pe } = await s.from('profiles').upsert({
-    id, email: d.email, full_name: d.full_name, role: d.role, campus: d.campus, job_title: d.job_title, avatar_url: d.avatar_url,
+    id, email: d.email, full_name: d.full_name, role: d.role, campus: d.campus, job_title: d.job_title, avatar_url: avatar,
   });
   if (pe) back('error', `La cuenta se creó, pero no su perfil: ${pe.message}`);
 
@@ -84,7 +104,8 @@ export async function updateUser(f: FormData) {
 
   const { data: before } = await s.from('profiles').select('*').eq('id', d.id).single();
   if (!before) back('error', 'El usuario no existe');
-  const patch: Record<string, unknown> = { full_name: d.full_name, role: d.role, campus: d.campus, job_title: d.job_title, avatar_url: d.avatar_url, active };
+  const avatar = await avatarFrom(f, d.id, d.avatar_url);
+  const patch: Record<string, unknown> = { full_name: d.full_name, role: d.role, campus: d.campus, job_title: d.job_title, avatar_url: avatar, active };
   if ('notify_email' in before!) patch.notify_email = d.notify_email === 'on';
   const { error } = await s.from('profiles').update(patch).eq('id', d.id);
   if (error) back('error', /active/.test(error.message) ? 'Falta ejecutar la migración 202611040001_usuarios_activos.sql' : error.message);

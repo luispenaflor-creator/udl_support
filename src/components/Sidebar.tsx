@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { NotificationCenter, type Notice } from './NotificationCenter';
+import { ThemeToggle } from './ThemeToggle';
 
 // `hint` explica la opción en palabras simples (se muestra en el menú del celular y como ayuda al pasar el cursor).
 export type NavItem = { href: string; label: string; icon: IconName; hint?: string; badge?: number; tone?: 'rose' | 'amber' | 'teal' };
@@ -128,6 +129,7 @@ export function Sidebar({ groups, user, roleLabel, notices }: {
         <div className="side-user">
           {user.avatar}
           <div className="side-user-text"><strong>{user.name}</strong><small>{user.detail}</small><span className="role-tag">{roleLabel}</span></div>
+          <ThemeToggle />
           <form action="/auth/signout" method="post">
             <button className="icon-btn logout" aria-label="Cerrar sesión" title="Cerrar sesión"><Icon name="logout" size={18} /><span className="logout-text">Salir</span></button>
           </form>

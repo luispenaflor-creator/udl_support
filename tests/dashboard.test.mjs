@@ -402,3 +402,51 @@ test('los usuarios desactivados no pueden entrar',async()=>{
   assert.match(check,/profile\.active === false/);
   assert.match(sql,/and active from public\.profiles/);
 });
+
+test('el tiempo de solución se mide desde la asignación hasta la resolución',()=>{
+  const rows=[
+    ticket({status:'resuelto',created_at:iso(NOW-10*H),assigned_at:iso(NOW-6*H),resolved_at:iso(NOW-2*H)}),
+    ticket({status:'cerrado',created_at:iso(NOW-10*H),assigned_at:iso(NOW-8*H),resolved_at:iso(NOW-6*H)}),
+    ticket({status:'resuelto',created_at:iso(NOW-5*H),resolved_at:iso(NOW-H)}), // sin asignación registrada: no cuenta
+  ];
+  const s=summarize(rows,NOW);
+  assert.equal(s.avgSolveMs,3*H);
+  assert.equal(s.solvedCount,2);
+  assert.equal(summarize([ticket()],NOW).avgSolveMs,null);
+});
+
+test('el solicitante elige una falla común y no la categoría; el detalle es obligatorio',async()=>{
+  const page=await readFile(resolve(root,'src/app/(app)/tickets/nuevo/page.tsx'),'utf8');
+  const fields=await readFile(resolve(root,'src/components/NewTicketFields.tsx'),'utf8');
+  const lib=await readFile(resolve(root,'src/lib/dashboard.ts'),'utf8');
+  for(const f of ['Transmisión de laptop a pantalla','Micrófono Hyflex','Problemas con Sure','Problemas con mi impresora']) assert.match(lib,new RegExp(f));
+  assert.match(fields,/OTHER_ISSUE/); assert.match(fields,/subject_other/);
+  assert.doesNotMatch(page,/name="category"/);
+  assert.match(page,/category: UNCLASSIFIED/);
+  assert.match(page,/description" minLength=\{10\} required/);
+  assert.match(page,/Indica el salón o área/);
+});
+
+test('resolver exige que el ticket esté clasificado',async()=>{
+  const src=await readFile(resolve(root,'src/app/(app)/tickets/[id]/actions.ts'),'utf8');
+  assert.match(src,/closing && cur!\.category === UNCLASSIFIED/);
+  assert.match(src,/export async function classifyTicket/);
+});
+
+test('la migración de planteles reales desactiva los anteriores sin borrarlos',async()=>{
+  const sql=await readFile(resolve(root,'supabase/migrations/202611090001_planteles_reales_area_fotos.sql'),'utf8');
+  for(const c of ['Vertiz','Orizaba','Frontera','Luis Cabrera','Querétaro','San Luis Potosí','Insurgentes','Medellín','Home Office']) assert.match(sql,new RegExp(`'${c}'`));
+  assert.doesNotMatch(sql,/delete from public\.campuses/i);
+  assert.match(sql,/set active = false/);
+  assert.match(sql,/assigned_at/);
+});
+
+test('las fotos se suben por el servidor y el tema se aplica antes de pintar',async()=>{
+  const actions=await readFile(resolve(root,'src/app/(app)/admin/usuarios/actions.ts'),'utf8');
+  const picker=await readFile(resolve(root,'src/components/AvatarPicker.tsx'),'utf8');
+  const layout=await readFile(resolve(root,'src/app/layout.tsx'),'utf8');
+  assert.match(actions,/storage\.from\('avatars'\)\.upload/);
+  assert.doesNotMatch(picker,/SERVICE_ROLE/);
+  assert.match(picker,/Examinar/);
+  assert.match(layout,/udl-theme/);
+});

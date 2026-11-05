@@ -33,12 +33,15 @@ const TICKET_COLS: Col[] = [
   { header: 'Prioridad', key: 'priority', width: 12 },
   { header: 'Categoría', key: 'category', width: 13 },
   { header: 'Plantel', key: 'campus', width: 14 },
+  { header: 'Salón / área', key: 'area', width: 18, type: 'text' },
   { header: 'Agente', key: 'agent', width: 26 },
   { header: 'SLA', key: 'sla', width: 14 },
   { header: 'Creado', key: 'created', width: 18, type: 'date' },
   { header: 'Vence', key: 'due', width: 18, type: 'date' },
   { header: 'Resuelto', key: 'resolved', width: 18, type: 'date' },
+  { header: 'Asignado', key: 'assigned', width: 18, type: 'date' },
   { header: 'Horas para resolver', key: 'hours', width: 14, type: 'hours' },
+  { header: 'Horas de solución (desde asignación)', key: 'solve', width: 16, type: 'hours' },
   { header: 'Calificación', key: 'score', width: 13, type: 'stars' },
 ];
 
@@ -48,10 +51,12 @@ export function addTicketsSheet(wb: ExcelJS.Workbook, rows: TicketRow[], names: 
     rows: rows.map((t) => {
       const s = sla(t).state;
       return {
-        folio: t.folio, subject: t.subject, status: STATUS_LABEL[t.status], priority: PRIORITY_LABEL[t.priority], category: t.category, campus: t.campus,
+        folio: t.folio, subject: t.subject, status: STATUS_LABEL[t.status], priority: PRIORITY_LABEL[t.priority], category: t.category, campus: t.campus, area: t.area ?? '',
         agent: t.assignee_id ? names.get(t.assignee_id) ?? 'Asignado' : 'Sin asignar', sla: SLA_LABEL[s], slaState: s,
         created: t.created_at, due: t.resolution_due_at, resolved: t.resolved_at,
+        assigned: t.assigned_at ?? null,
         hours: t.resolved_at ? (new Date(t.resolved_at).getTime() - new Date(t.created_at).getTime()) / H : null,
+        solve: t.resolved_at && t.assigned_at ? Math.max(0, new Date(t.resolved_at).getTime() - new Date(t.assigned_at).getTime()) / H : null,
         score: scores.get(t.id) ?? null, prio: t.priority,
       };
     }),
@@ -95,7 +100,8 @@ export function buildFullReport(wb: ExcelJS.Workbook, opts: {
       ['Resueltos o cerrados', sum.closed],
       ['Sin asignar', sum.unassigned],
       ['Cumplimiento SLA', pct(sum.slaPct), 'Resueltos dentro del plazo (horas corridas)'],
-      ['Tiempo promedio de resolución', hours(sum.avgResolutionMs)],
+      ['Tiempo promedio de solución', hours(sum.avgSolveMs), 'Desde que se asigna a un agente hasta que lo resuelve'],
+      ['Tiempo promedio total', hours(sum.avgResolutionMs), 'Desde la creación del ticket hasta resolverlo'],
       ['Satisfacción promedio', avg === null ? '—' : `${avg.toFixed(2)} / 5`, `${surveys.length} evaluaciones`],
     ],
     sections: [

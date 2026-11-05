@@ -30,6 +30,9 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
   const ids = [...new Set(rows.map((t) => t.assignee_id).concat(f.agente ?? null).filter(Boolean))] as string[];
   const { data: peopleRaw } = ids.length ? await s.from('profiles').select('*').in('id', ids) : { data: [] };
   const people = new Map(((peopleRaw ?? []) as Person[]).map((x) => [x.id, x]));
+  // Lista de agentes para el filtro (solo personal de soporte).
+  const { data: agentsRaw } = staff ? await s.from('profiles').select('id,full_name,active').eq('role', 'agente').order('full_name') : { data: [] };
+  const agentOptions = ((agentsRaw ?? []) as (Person & { active?: boolean })[]).filter((a) => a.active !== false || a.id === f.agente);
 
   // Chips de filtros activos con enlace para quitarlos.
   const labelFor = (k: keyof TicketFilter, v: string): string => {
@@ -103,8 +106,16 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
             </select>
           </label>
         )}
+        {staff && (
+          <label><span className="sr-only">Agente</span>
+            <select name="agente" defaultValue={f.agente ?? ''}>
+              <option value="">Todos los agentes</option>
+              {agentOptions.map((a) => <option key={a.id} value={a.id}>{a.full_name}{a.active === false ? ' (inactivo)' : ''}</option>)}
+            </select>
+          </label>
+        )}
         {/* Conserva filtros que no tienen control visible (los que llegan desde el panel). */}
-        {(['sla', 'asignado', 'agente', 'abiertos', 'periodo'] as const).map((k) => f[k] && <input key={k} type="hidden" name={k} value={f[k]} />)}
+        {(['sla', 'asignado', 'abiertos', 'periodo'] as const).map((k) => f[k] && <input key={k} type="hidden" name={k} value={f[k]} />)}
         <button className="small"><Icon name="filter" size={16} />Filtrar</button>
       </form>
 
@@ -135,7 +146,7 @@ export default async function Tickets({ searchParams }: { searchParams: Promise<
               <li key={t.id} className="reveal" style={{ '--d': `${Math.min(i, 12) * 35 + 120}ms` } as React.CSSProperties}>
                 <Link href={`/tickets/${t.id}`} className="list-row glass-soft interactive">
                   <div className="tr-main">
-                    <span className="folio">{t.folio} · {t.campus} · {t.category}</span>
+                    <span className="folio">{t.folio} · {t.campus}{t.area ? ` · ${t.area}` : ''}{staff ? ` · ${t.category}` : ''}</span>
                     <strong>{t.subject}</strong>
                     <div className="tr-meta start"><StatusChip status={t.status} audience={staff ? 'staff' : 'solicitante'} /><PriorityChip priority={t.priority} /></div>
                   </div>

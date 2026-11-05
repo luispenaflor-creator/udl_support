@@ -4,6 +4,7 @@ import type { Role } from '@/lib/types';
 import { campusNames } from '@/lib/campuses';
 import { relativeTime } from '@/lib/dashboard';
 import { hasServiceRole } from '@/lib/supabase/admin';
+import { AvatarPicker } from '@/components/AvatarPicker';
 import { Icon } from '@/components/Icon';
 import { Empty } from '@/components/dashboard';
 import { Avatar } from '@/components/people';
@@ -110,7 +111,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<Se
 
                     <form action={updateUser} className="form user-form">
                       <input type="hidden" name="id" value={u.id} />
-                      <ProfileFields u={u} self={u.id === user.id} campuses={campuses} />
+                      <ProfileFields u={u} self={u.id === user.id} campuses={campuses} canUpload={service} />
                       <label className="check"><input type="checkbox" name="active" defaultChecked={u.active !== false} disabled={u.id === user.id} />Cuenta activa (puede iniciar sesión)</label>
                       {u.id === user.id && <input type="hidden" name="active" value="on" />}
                       {'notify_email' in u && <label className="check"><input type="checkbox" name="notify_email" defaultChecked={u.notify_email !== false} />Recibir avisos por correo</label>}
@@ -158,7 +159,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<Se
             </p>
           )}
           <form action={createUser} className="form">
-            <ProfileFields campuses={campuses} />
+            <ProfileFields campuses={campuses} canUpload={service} />
             <label>Correo institucional<input name="email" type="email" required autoComplete="off" placeholder="nombre@udlondres.com" /></label>
             <label>Contraseña temporal<input name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="Mínimo 8 caracteres" /></label>
             <p className="muted small-print">Comparte la contraseña por un canal seguro y pide que la cambie al entrar.</p>
@@ -170,7 +171,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<Se
   );
 }
 
-function ProfileFields({ u, self, campuses }: { u?: Profile; self?: boolean; campuses: string[] }) {
+function ProfileFields({ u, self, campuses, canUpload }: { u?: Profile; self?: boolean; campuses: string[]; canUpload: boolean }) {
   // Si el usuario tiene un plantel desactivado se conserva como opción para no perderlo al guardar.
   const options = u?.campus && !campuses.includes(u.campus) ? [...campuses, u.campus] : campuses;
   return (
@@ -189,10 +190,7 @@ function ProfileFields({ u, self, campuses }: { u?: Profile; self?: boolean; cam
         </select>
       </label>
       <label>Puesto<input name="job_title" defaultValue={u?.job_title ?? ''} placeholder="Ej. Analista de soporte" /></label>
-      <label className="span-all">Foto (ruta o URL)
-        <input name="avatar_url" defaultValue={u?.avatar_url ?? ''} list={`avatars-${u?.id ?? 'nuevo'}`} placeholder="/avatars/… o https://…  (vacío = iniciales)" />
-        <datalist id={`avatars-${u?.id ?? 'nuevo'}`}>{AVATARS.map((a) => <option key={a} value={a} />)}</datalist>
-      </label>
+      <AvatarPicker id={u?.id ?? 'nuevo'} name={u?.full_name ?? ''} current={u?.avatar_url ?? null} presets={[...AVATARS]} canUpload={canUpload} />
     </div>
   );
 }

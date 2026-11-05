@@ -17,7 +17,7 @@ import {
 } from '@/components/dashboard';
 import { Ranking } from '@/components/people';
 
-const COLS = 'id,folio,subject,status,priority,campus,category,created_at,updated_at,resolution_due_at,resolved_at,assignee_id,requester_id';
+const COLS = 'id,folio,subject,status,priority,campus,category,created_at,updated_at,resolution_due_at,resolved_at,assignee_id,requester_id,assigned_at,area';
 const ROW_LIMIT = 20000;
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -204,21 +204,31 @@ async function RequesterView({ rows, s, userId }: { rows: TicketRow[]; s: Db; us
   );
 }
 
+// Texto de apoyo del indicador de tiempo de solución (asignación → resolución).
+function solveHint(sum: ReturnType<typeof summarize>): string {
+  if (sum.avgSolveMs === null) return 'Sin resoluciones en el periodo';
+  const total = sum.avgResolutionMs === null ? '' : ` · total desde la creación ${formatDuration(sum.avgResolutionMs)}`;
+  return `De la asignación a la resolución${total}`;
+}
+
 /* ---------- Agente ---------- */
 
 function AgentView({ rows, userId, base }: { rows: TicketRow[]; userId: string; base: TicketFilter }) {
   const sum = summarize(rows);
   const mine = rows.filter((t) => !isClosed(t) && t.assignee_id === userId);
+  const mineSum = summarize(rows.filter((t) => t.assignee_id === userId));
   const queue = urgencyQueue(rows).slice(0, 8);
   const openRows = rows.filter((t) => !isClosed(t));
 
   return (
     <>
-      <section className="stats">
+      <section className="stats five">
         <StatCard label="Sin asignar" value={sum.unassigned} icon="inbox" tone="cyan" hint="Disponibles para tomar" href={ticketsUrl({ ...base, abiertos: '1', asignado: 'sin' })} delay={80} />
         <StatCard label="Asignados a mí" value={mine.length} icon="user" tone="blue" hint="Abiertos a tu cargo" href={ticketsUrl({ ...base, abiertos: '1', asignado: 'mio' })} delay={140} />
         <StatCard label="Por vencer SLA" value={sum.atRisk} icon="hourglass" tone="amber" hint="Último 25 % del tiempo" href={ticketsUrl({ ...base, sla: 'riesgo' })} delay={200} />
         <StatCard label="Vencidos" value={sum.overdue} icon="alert" tone="rose" hint={sum.overdue ? 'Requieren atención inmediata' : 'Ninguno vencido'} href={ticketsUrl({ ...base, sla: 'vencido' })} delay={260} />
+        <StatCard label="Mi tiempo de solución" value={null} text={mineSum.avgSolveMs === null ? undefined : formatDuration(mineSum.avgSolveMs)} icon="timer" tone="violet"
+          hint={mineSum.avgSolveMs === null ? 'Aún no resuelves tickets en el periodo' : `Promedio de ${mineSum.solvedCount} resueltos, desde que se te asignan`} href={ticketsUrl({ ...base, asignado: 'mio', estado: 'resuelto,cerrado' })} delay={320} />
       </section>
 
       <div className="grid-main">
@@ -284,8 +294,8 @@ async function DirectorView({ rows, showCampus, base, s }: { rows: TicketRow[]; 
         <StatCard label="Vencidos" value={sum.overdue} icon="alert" tone="rose" hint="Abiertos fuera de SLA" href={ticketsUrl({ ...base, sla: 'vencido' })} delay={180} />
         <StatCard label="Cumplimiento SLA" value={sum.slaPct} suffix="%" icon="shield" tone="green"
           hint={sum.slaPct === null ? 'Sin tickets resueltos aún' : `De ${sum.closed} resueltos`} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={230} />
-        <StatCard label="Tiempo promedio" value={null} text={sum.avgResolutionMs === null ? undefined : formatDuration(sum.avgResolutionMs)} icon="timer" tone="violet"
-          hint={sum.avgResolutionMs === null ? 'Sin resoluciones en el periodo' : 'Desde la creación hasta resolver'} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={280} />
+        <StatCard label="Tiempo de solución" value={null} text={sum.avgSolveMs === null ? undefined : formatDuration(sum.avgSolveMs)} icon="timer" tone="violet"
+          hint={solveHint(sum)} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={280} />
       </section>
       {sum.total === 0 ? (
         <section className="glass panel reveal">
@@ -378,11 +388,11 @@ async function AdminView({ rows, s, base }: { rows: TicketRow[]; s: Db; base: Ti
   ];
 
   const shortcuts: { label: string; href?: string; icon: 'users' | 'list' | 'timer' | 'mail' | 'shield' | 'chart'; note?: string }[] = [
-    { label: 'Usuarios y perfiles', icon: 'users', note: 'Próximamente' },
-    { label: 'Catálogos', icon: 'list', note: 'Próximamente' },
+    { label: 'Usuarios y perfiles', href: '/admin/usuarios', icon: 'users' },
+    { label: 'Planteles', href: '/admin/planteles', icon: 'list' },
     { label: 'Reglas SLA', href: '/admin', icon: 'timer' },
     { label: 'Correo de soporte', href: '/admin', icon: 'mail' },
-    { label: 'Auditoría', icon: 'shield', note: 'Próximamente' },
+    { label: 'Auditoría', href: '/admin/auditoria', icon: 'shield' },
     { label: 'Reportes', href: '/reportes', icon: 'chart' },
   ];
 
@@ -394,8 +404,8 @@ async function AdminView({ rows, s, base }: { rows: TicketRow[]; s: Db; base: Ti
         <StatCard label="Sin asignar" value={sum.unassigned} icon="inbox" tone="cyan" hint="Esperan un agente" href={ticketsUrl({ ...base, abiertos: '1', asignado: 'sin' })} delay={180} />
         <StatCard label="Cumplimiento SLA" value={sum.slaPct} suffix="%" icon="shield" tone="green"
           hint={sum.slaPct === null ? 'Sin tickets resueltos aún' : `De ${sum.closed} resueltos`} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={230} />
-        <StatCard label="Cobertura por plantel" value={coveredCampus.size} suffix={`/${CAMPUS.length}`} icon="building" tone="violet"
-          hint="Planteles con agente asignado" href="#ranking" delay={280} />
+        <StatCard label="Tiempo de solución" value={null} text={sum.avgSolveMs === null ? undefined : formatDuration(sum.avgSolveMs)} icon="timer" tone="violet"
+          hint={solveHint(sum)} href={ticketsUrl({ ...base, estado: 'resuelto,cerrado' })} delay={280} />
       </section>
 
       {sum.total > 0 && <RankingPanel ranking={ranking} base={base} />}

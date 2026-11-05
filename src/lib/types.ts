@@ -1,1 +1,3 @@
-export type Role='solicitante'|'agente'|'directivo'|'administrador';export const CAMPUS=['Centro','Roma','San Ángel','Coapa','Insurgentes','Reforma','Satélite','Zaragoza'] as const;
+export type Role='solicitante'|'agente'|'directivo'|'administrador';
+// Respaldo si el catálogo de planteles no está disponible.
+export const CAMPUS=['Vertiz','Orizaba','Frontera','Luis Cabrera','Querétaro','San Luis Potosí','Insurgentes','Medellín','Home Office'] as const;

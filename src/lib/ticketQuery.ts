@@ -8,7 +8,7 @@ import { fetchAll } from './fetchAll';
 
 type Ctx = Awaited<ReturnType<typeof access>>;
 
-export const TICKET_COLS = 'id,folio,subject,status,priority,campus,category,created_at,updated_at,resolution_due_at,resolved_at,assignee_id,requester_id';
+export const TICKET_COLS = 'id,folio,subject,status,priority,campus,category,created_at,updated_at,resolution_due_at,resolved_at,assignee_id,requester_id,assigned_at,area';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Solo se aceptan valores conocidos; cualquier otro parámetro se ignora.

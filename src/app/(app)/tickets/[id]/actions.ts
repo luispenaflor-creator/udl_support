@@ -6,7 +6,7 @@ import { after } from 'next/server';
 import { notifyTicket } from '@/lib/notify';
 import { access } from '@/lib/auth';
 import { allCampusNames } from '@/lib/campuses';
-import { CATEGORIES, PRIORITY_ORDER, canTransition, type Status } from '@/lib/dashboard';
+import { AGENT_CATEGORIES, CATEGORIES, PRIORITY_ORDER, UNCLASSIFIED, canTransition, type Status } from '@/lib/dashboard';
 import { MIN_REASON, requesterEscalation, waitText } from '@/lib/escalation';
 
 const CLOSING: Status[] = ['resuelto', 'cerrado'];
@@ -56,7 +56,7 @@ export async function takeTicket(id: string) {
 export async function manageTicket(id: string, f: FormData) {
   const { s, user, p } = await access(['agente', 'directivo', 'administrador']);
   const supervisor = p.role === 'directivo' || p.role === 'administrador';
-  const { data: cur } = await s.from('tickets').select('status,assignee_id,resolved_at').eq('id', id).single();
+  const { data: cur } = await s.from('tickets').select('status,assignee_id,resolved_at,category').eq('id', id).single();
   if (!cur) back(id, 'error', 'El ticket no existe');
   if (!supervisor && cur!.assignee_id !== user.id) back(id, 'error', 'Solo puedes gestionar los tickets que tomaste');
 
@@ -77,6 +77,7 @@ export async function manageTicket(id: string, f: FormData) {
   const resolution = String(f.get('resolution') ?? '').trim();
   if (closing && resolution.length < 10) back(id, 'error', 'Describe qué se realizó para resolverlo (mínimo 10 caracteres)');
   if (closing && !assignee) back(id, 'error', 'Asigna un agente antes de resolver o cerrar el ticket');
+  if (closing && cur!.category === UNCLASSIFIED) back(id, 'error', 'Clasifica el ticket (categoría) antes de resolverlo');
   // "En espera" = soporte espera al solicitante: hay que decirle qué se necesita de él.
   const asking = status === 'en_espera' && cur!.status !== 'en_espera';
   const question = String(f.get('question') ?? '').trim();
@@ -112,14 +113,32 @@ export async function manageTicket(id: string, f: FormData) {
     : asking ? 'Pregunta enviada. El ticket espera la respuesta del solicitante.' : 'Cambios guardados.');
 }
 
+// Clasificación rápida: el solicitante no elige categoría; la asigna el agente (en sus tickets), dirección o administración.
+export async function classifyTicket(id: string, f: FormData) {
+  const { s, user, p } = await access(['agente', 'directivo', 'administrador']);
+  const category = String(f.get('category') ?? '');
+  if (!(AGENT_CATEGORIES as readonly string[]).includes(category)) back(id, 'error', 'Elige una categoría válida');
+  const { data: cur } = await s.from('tickets').select('category,assignee_id').eq('id', id).single();
+  if (!cur) back(id, 'error', 'El ticket no existe');
+  if (p.role === 'agente' && cur!.assignee_id !== user.id) back(id, 'error', 'Solo puedes clasificar los tickets que tomaste');
+  if (cur!.category === category) back(id, 'ok', 'Sin cambios');
+  const { error } = await s.from('tickets').update({ category, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) back(id, 'error', 'No se pudo guardar la categoría');
+  await s.from('ticket_events').insert({ ticket_id: id, actor_id: user.id, event_type: 'edicion', payload: { edicion: { category: { de: cur!.category, a: category } } } });
+  done(id, 'Ticket clasificado como ' + category + '.');
+}
+
 // Corrección de clasificación: agente (en sus tickets), directivo y administración. Asunto y descripción solo administración.
 export async function editTicket(id: string, f: FormData) {
   const { s, user, p } = await access(['agente', 'directivo', 'administrador']);
-  const { data: cur } = await s.from('tickets').select('subject,description,category,priority,campus,assignee_id').eq('id', id).single();
+  const { data: cur } = await s.from('tickets').select('subject,description,category,priority,campus,area,assignee_id').eq('id', id).single();
   if (!cur) back(id, 'error', 'El ticket no existe');
   if (p.role === 'agente' && cur!.assignee_id !== user.id) back(id, 'error', 'Solo puedes editar los tickets que tomaste');
-  const next: Record<string, string> = { category: String(f.get('category')), priority: String(f.get('priority')), campus: String(f.get('campus')) };
-  if (!(CATEGORIES as readonly string[]).includes(next.category) || !(PRIORITY_ORDER as string[]).includes(next.priority) || !(await allCampusNames(s)).includes(next.campus)) {
+  const next: Record<string, string | null> = {
+    category: String(f.get('category')), priority: String(f.get('priority')), campus: String(f.get('campus')),
+    area: String(f.get('area') ?? '').trim().slice(0, 80) || null,
+  };
+  if (!(CATEGORIES as readonly string[]).includes(next.category!) || !(PRIORITY_ORDER as string[]).includes(next.priority!) || !(await allCampusNames(s)).includes(next.campus!)) {
     back(id, 'error', 'Categoría, prioridad o plantel no válidos');
   }
   if (p.role === 'administrador') {
@@ -128,7 +147,7 @@ export async function editTicket(id: string, f: FormData) {
     if (description.length < 10) back(id, 'error', 'La descripción es demasiado corta');
     next.subject = subject; next.description = description;
   }
-  const c = cur as Record<string, string>;
+  const c = cur as Record<string, string | null>;
   const changes = Object.fromEntries(Object.entries(next).filter(([k, v]) => c[k] !== v).map(([k, v]) => [k, k === 'description' ? { editada: true } : { de: c[k], a: v }]));
   if (!Object.keys(changes).length) back(id, 'ok', 'Sin cambios');
   const { error } = await s.from('tickets').update({ ...next, updated_at: new Date().toISOString() }).eq('id', id);

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Icon, type IconName } from '@/components/Icon';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type Mode = 'login' | 'forgot' | 'recovery';
 
@@ -158,6 +159,7 @@ export default function Login() {
 
   return (
     <main className="login">
+      <ThemeToggle className="login-theme" />
       <section className="login-brand">
         <div className="brand login-logo"><span className="brand-mark" aria-hidden="true">U</span><span className="brand-text">UDL <span>Support</span></span></div>
         <h1>La mesa de ayuda de la <span className="grad">Universidad de Londres</span></h1>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { access } from '@/lib/auth';
 import { campusNames } from '@/lib/campuses';
 import {
-  CATEGORIES, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_LABEL, TRANSITIONS, isClosed, relativeTime, slaText,
+  AGENT_CATEGORIES, PRIORITY_LABEL, UNCLASSIFIED, formatDuration, PRIORITY_ORDER, STATUS_LABEL, TRANSITIONS, isClosed, relativeTime, slaText,
   type Priority, type Status, type TicketRow,
 } from '@/lib/dashboard';
 import { requesterEscalation } from '@/lib/escalation';
@@ -14,7 +14,7 @@ import { PriorityChip, SlaBar, StatusChip } from '@/components/dashboard';
 import { AgentCard, Avatar, StarInput, Stars } from '@/components/people';
 import { QuickReplies } from '@/components/QuickReplies';
 import { ManageForm, RequesterEscalate } from '@/components/TicketForms';
-import { addComment, editTicket, escalateTicket, manageTicket, rateTicket, takeTicket } from './actions';
+import { addComment, classifyTicket, editTicket, escalateTicket, manageTicket, rateTicket, takeTicket } from './actions';
 
 type Person = { id: string; full_name: string; role: string; job_title?: string | null; avatar_url?: string | null; campus?: string | null };
 type Comment = { id: string; author_id: string; body: string; visibility: string | null; created_at: string };
@@ -22,7 +22,7 @@ type EventRow = { id: string; actor_id: string | null; event_type: string; paylo
 type Escalation = { id: string; requested_by: string; requester_role: string; reason: string; status: EscStatus; response: string | null; attended_by: string | null; attended_at: string | null; created_at: string };
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const FIELD: Record<string, string> = { subject: 'asunto', description: 'descripción', category: 'categoría', priority: 'prioridad', campus: 'plantel' };
+const FIELD: Record<string, string> = { subject: 'asunto', description: 'descripción', category: 'categoría', priority: 'prioridad', campus: 'plantel', area: 'salón/área' };
 
 export default async function Detail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; error?: string }> }) {
   const id = (await params).id;
@@ -86,7 +86,7 @@ export default async function Detail({ params, searchParams }: { params: Promise
 
       <header className="glass ticket-head reveal">
         <div>
-          <span className="folio">{ticket.folio} · {ticket.campus} · {ticket.category}</span>
+          <span className="folio">{ticket.folio} · {ticket.campus}{ticket.area ? ` · ${ticket.area}` : ''}{staff ? ` · ${ticket.category}` : ''}</span>
           <h1>{ticket.subject}</h1>
           <div className="tr-meta start">
             <StatusChip status={ticket.status} audience={staff ? 'staff' : 'solicitante'} /><PriorityChip priority={ticket.priority} />
@@ -196,12 +196,34 @@ export default async function Detail({ params, searchParams }: { params: Promise
             <dl className="facts">
               <dt>Estado</dt><dd>{STATUS_LABEL[ticket.status]}</dd>
               <dt>Prioridad</dt><dd>{PRIORITY_LABEL[ticket.priority]}</dd>
+              <dt>Plantel</dt><dd>{ticket.campus}</dd>
+              <dt>Salón / área</dt><dd>{ticket.area || '—'}</dd>
+              {staff && <><dt>Categoría</dt><dd>{ticket.category}</dd></>}
               <dt>SLA</dt><dd>{slaText(ticket)}</dd>
               <dt>Creado</dt><dd>{fmt(ticket.created_at)}</dd>
               <dt>Actualizado</dt><dd>{relativeTime(ticket.updated_at ?? ticket.created_at)}</dd>
+              {ticket.assigned_at && <><dt>Asignado</dt><dd>{fmt(ticket.assigned_at)}</dd></>}
               {ticket.resolved_at && <><dt>Resuelto</dt><dd>{fmt(ticket.resolved_at)}</dd></>}
+              {ticket.resolved_at && ticket.assigned_at && <><dt>Tiempo de solución</dt><dd>{formatDuration(Math.max(0, new Date(ticket.resolved_at).getTime() - new Date(ticket.assigned_at).getTime()))}</dd></>}
             </dl>
           </section>
+
+          {/* El solicitante no elige categoría: la asigna quien atiende. Es obligatoria para resolver. */}
+          {(supervisor || (p.role === 'agente' && isMine)) && ticket.category === UNCLASSIFIED && (
+            <section className="glass panel classify-panel reveal" style={{ '--d': '200ms' } as React.CSSProperties}>
+              <header className="panel-head"><h2><Icon name="filter" size={18} />Clasifica este ticket</h2></header>
+              <p className="muted small-print">El solicitante no elige categoría. Asígnala tú; se requiere para resolverlo y alimenta los reportes.</p>
+              <form action={classifyTicket.bind(null, id1)} className="classify-form">
+                <label><span className="sr-only">Categoría</span>
+                  <select name="category" required defaultValue="">
+                    <option value="" disabled>Elige una categoría</option>
+                    {AGENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <button className="small"><Icon name="check" size={16} />Guardar categoría</button>
+              </form>
+            </section>
+          )}
 
           {/* Gestión: directivo/administración siempre; el agente solo en los tickets que tomó (sin asignar a otros). */}
           {(supervisor || (p.role === 'agente' && isMine)) && (
@@ -268,7 +290,7 @@ export default async function Detail({ params, searchParams }: { params: Promise
                     <label>Descripción<textarea name="description" required minLength={10} defaultValue={ticket.description} style={{ minHeight: 100 }} /></label>
                   </>}
                   <label>Categoría
-                    <select name="category" defaultValue={ticket.category}>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+                    <select name="category" defaultValue={ticket.category}>{(ticket.category === UNCLASSIFIED ? [UNCLASSIFIED, ...AGENT_CATEGORIES] : AGENT_CATEGORIES).map((c) => <option key={c} value={c}>{c}</option>)}</select>
                   </label>
                   <label>Prioridad
                     <select name="priority" defaultValue={ticket.priority}>{PRIORITY_ORDER.map((x) => <option key={x} value={x}>{PRIORITY_LABEL[x as Priority]}</option>)}</select>
@@ -278,6 +300,7 @@ export default async function Detail({ params, searchParams }: { params: Promise
                       {(campuses.includes(ticket.campus) ? campuses : [...campuses, ticket.campus]).map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </label>
+                  <label>Salón / área<input name="area" maxLength={80} defaultValue={ticket.area ?? ''} placeholder="Ej. Aula 204" /></label>
                   <button><Icon name="check" size={16} />Guardar edición</button>
                   {p.role !== 'administrador' && <small className="muted">Asunto y descripción solo los corrige un administrador.</small>}
                 </form>

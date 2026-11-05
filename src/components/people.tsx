@@ -23,7 +23,7 @@ export function Stars({ value, size = 16 }: { value: number | null; size?: numbe
         const fill = Math.max(0, Math.min(1, value - (i - 1)));
         return (
           <svg key={i} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-            <defs><linearGradient id={`sf-${i}-${Math.round(fill * 100)}`}><stop offset={fill} stopColor="#fbbf24" /><stop offset={fill} stopColor="rgba(255,255,255,.18)" /></linearGradient></defs>
+            <defs><linearGradient id={`sf-${i}-${Math.round(fill * 100)}`}><stop offset={fill} stopColor="#fbbf24" /><stop offset={fill} style={{ stopColor: 'rgb(var(--hi) / .18)' }} /></linearGradient></defs>
             <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" fill={`url(#sf-${i}-${Math.round(fill * 100)})`} />
           </svg>
         );
@@ -104,7 +104,7 @@ export function Ranking({ stats, base }: { stats: AgentStats[]; base: TicketFilt
       <div className="rank-table" role="table" aria-label="Detalle del ranking de agentes">
         <div className="rank-row head" role="row">
           <span role="columnheader">#</span><span role="columnheader">Agente</span><span role="columnheader">Satisfacción</span>
-          <span role="columnheader">Resueltos</span><span role="columnheader">SLA</span><span role="columnheader">Promedio</span><span role="columnheader">Abiertos</span>
+          <span role="columnheader">Resueltos</span><span role="columnheader">SLA</span><span role="columnheader" title="Promedio desde la asignación hasta la resolución">T. solución</span><span role="columnheader">Abiertos</span>
         </div>
         {stats.map((a, i) => (
           <Link key={a.id} href={ticketsUrl({ ...base, agente: a.id })} className="rank-row" role="row">
