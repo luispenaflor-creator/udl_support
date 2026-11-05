@@ -28,7 +28,8 @@ const createSchema = z.object({
   password: z.string().min(8, 'La contraseña temporal debe tener al menos 8 caracteres').max(72),
 });
 
-const updateSchema = z.object({ ...profileFields, id: z.string().uuid(), active: z.enum(['on']).optional(), notify_email: z.enum(['on']).optional() });
+// Casillas: marcada = 'on'; sin marcar el navegador no la envía y read() la deja en '' (antes fallaba al desactivar).
+const updateSchema = z.object({ ...profileFields, id: z.string().uuid(), active: z.string().optional(), notify_email: z.string().optional() });
 
 // Foto enviada por el selector (JPEG reducido en el navegador, como data URL). Se guarda en el bucket público "avatars".
 const MAX_AVATAR = 1_500_000;

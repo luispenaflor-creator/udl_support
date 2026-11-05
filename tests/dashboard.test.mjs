@@ -450,3 +450,13 @@ test('las fotos se suben por el servidor y el tema se aplica antes de pintar',as
   assert.match(picker,/Examinar/);
   assert.match(layout,/udl-theme/);
 });
+
+test('desactivar una cuenta (casilla sin marcar) no falla la validación',async()=>{
+  const actions=await readFile(resolve(root,'src/app/(app)/admin/usuarios/actions.ts'),'utf8');
+  const {z}=await import('zod');
+  // read() convierte una casilla sin marcar en '': el esquema debe aceptarla y tratarla como "no".
+  assert.doesNotMatch(actions,/active:\s*z\.enum\(\['on'\]\)/);
+  assert.doesNotMatch(actions,/notify_email:\s*z\.enum\(\['on'\]\)/);
+  assert.match(actions,/const active = d\.active === 'on'/);
+  assert.equal(z.object({active:z.string().optional()}).safeParse({active:''}).success,true);
+});
